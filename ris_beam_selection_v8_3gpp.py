@@ -620,7 +620,8 @@ cdl_cfg = CDLConfig(
     c_zsa_deg=CDL_C_ZSA_DEG,
     n_rays=CDL_N_RAYS,
     chunk_size=CDL_CHUNK_SIZE,
-    random_global_rotation=True,
+    shared_cluster_geometry=True,
+    random_global_rotation=False,
 )
 
 cdl_gen = CDL38901RIS(cdl_cfg, device=device)
