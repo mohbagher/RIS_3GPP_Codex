@@ -833,7 +833,7 @@ print(f"{'=' * 65}")
 
 all_pass = True
 
-print("\n[1/9] Channel Amplitude Statistics")
+print("\n[1/8] Channel Amplitude Statistics")
 flat_amp = torch.abs(cascade_channel).view(-1)
 amp_mean = flat_amp.mean().item()
 amp_std  = flat_amp.std().item()
@@ -846,7 +846,7 @@ else:
     status = "FAIL — CoV too low"; all_pass = False
 print(f"  Mean={amp_mean:.4f}  Std={amp_std:.4f}  CoV={amp_cov:.3f}  [{status}]")
 
-print("\n[2/9] Adjacent-Element Spatial Correlation")
+print("\n[2/8] Adjacent-Element Spatial Correlation")
 sample_h = cascade_channel[min(500, NUM_SAMPLES - 1)]  # diagnostic sample for correlation check
 h_left  = sample_h[:-1]; h_right = sample_h[1:]
 corr = (torch.abs(torch.sum(h_left * h_right.conj()))
@@ -855,7 +855,7 @@ status = "PASS" if corr > CORR_PASS_THRESHOLD else "WARN — low spatial correla
 if corr <= CORR_PASS_THRESHOLD: all_pass = False
 print(f"  Correlation={corr:.4f}  (threshold={CORR_PASS_THRESHOLD})  [{status}]")
 
-print("\n[3/9] Oracle Beam Diversity")
+print("\n[3/8] Oracle Beam Diversity")
 beam_counts_v  = torch.bincount(oracle_labels, minlength=V).float()
 beams_used_v   = (beam_counts_v > 0).sum().item()
 max_beam_frac  = beam_counts_v.max().item() / NUM_SAMPLES * 100
@@ -2124,11 +2124,11 @@ print("Saved: Accuracy_BarChart.png")
 # not absolute signal level.
 # ==============================================================
 print(f"\n{'=' * 90}")
-print(f"  SNR ROBUSTNESS TEST (M=128, static)")
+M_test = min(128, V)
+print(f"  SNR ROBUSTNESS TEST (M={M_test}, static)")
 print(f"  [v8] Instance-normalised features, SAFE_NOISE_FLOOR={SAFE_NOISE_FLOOR}")
 print(f"{'=' * 90}")
 test_snr_list = [-5.0, 0.0, 5.0, 10.0, 15.0, 20.0]
-M_test = 128
 
 h_test_dev   = h_test.to(device)
 probe_dev    = PROBE_MATRIX.to(device)
