@@ -212,26 +212,37 @@ OUTPUT_DIR = args.output_dir
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 if args.test:
-    NUM_SAMPLES         = 10_000
+    # Reduce array/codebook dimensions so channel generation completes quickly on CPU.
+    # N_ROWS/N_COLS must be overridden before the derived N, V, INPUT_DIM constants below.
+    # NOTE: test mode is for pipeline validation only (smoke test); it does not
+    # verify model quality or production-scale accuracy.
+    N_ROWS              = 4
+    N_COLS              = 4
+    V_ROWS              = N_ROWS
+    V_COLS              = N_COLS
+    CDL_CHUNK_SIZE      = 64
+    BUDGET_LIST_RAW     = [4, 8, 16]
+    NUM_SAMPLES         = 500
     TEST_FRAC           = 0.2
     VAL_FRAC            = 0.1
-    HIDDEN              = 256
-    N_RESBLOCKS         = 2
-    BATCH               = 512
-    PHASE1_MAX_EPOCHS   = 5
-    PATIENCE            = 3
-    LR_PATIENCE         = 2
-    PHASE2_MAX_EPOCHS   = 5
-    PHASE2_PATIENCE     = 3
+    HIDDEN              = 64
+    N_RESBLOCKS         = 1
+    BATCH               = 128
+    PHASE1_MAX_EPOCHS   = 2
+    PATIENCE            = 2
+    LR_PATIENCE         = 1
+    PHASE2_MAX_EPOCHS   = 2
+    PHASE2_PATIENCE     = 2
     PHASE2_WARMUP_EPOCHS = 1
-    EWC_FISHER_BATCHES  = 5
-    N_EVAL_MASKS        = 2
-    ONLINE_DEMO_SAMPLES = 20
+    EWC_FISHER_BATCHES  = 2
+    N_EVAL_MASKS        = 1
+    ONLINE_DEMO_SAMPLES = 5
     MAX_EPOCHS = PHASE1_MAX_EPOCHS + PHASE2_MAX_EPOCHS
     print("\n" + "=" * 60)
-    print("  TEST MODE — small parameters for quick CPU check")
+    print("  TEST MODE — pipeline validation only (not model quality)")
     print(f"  NUM_SAMPLES={NUM_SAMPLES}  HIDDEN={HIDDEN}  "
           f"RESBLOCKS={N_RESBLOCKS}  P1={PHASE1_MAX_EPOCHS}  P2={PHASE2_MAX_EPOCHS}")
+    print(f"  RIS={N_ROWS}x{N_COLS}  CDL_CHUNK={CDL_CHUNK_SIZE}")
     print("=" * 60 + "\n")
 
 
@@ -836,7 +847,7 @@ else:
 print(f"  Mean={amp_mean:.4f}  Std={amp_std:.4f}  CoV={amp_cov:.3f}  [{status}]")
 
 print("\n[2/9] Adjacent-Element Spatial Correlation")
-sample_h = cascade_channel[500]
+sample_h = cascade_channel[min(500, NUM_SAMPLES - 1)]  # diagnostic sample for correlation check
 h_left  = sample_h[:-1]; h_right = sample_h[1:]
 corr = (torch.abs(torch.sum(h_left * h_right.conj()))
         / (h_left.abs().norm() * h_right.abs().norm() + 1e-12)).item()
