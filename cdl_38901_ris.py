@@ -73,6 +73,7 @@ class CDLConfig:
     n_rays: int = 20
     chunk_size: int = 256
     random_global_rotation: bool = False
+    shared_cluster_geometry: bool = True
     eps_norm: float = 1e-12
 
 
@@ -169,6 +170,28 @@ class CDL38901RIS:
             tx_az_rad=tx_az_rad, rx_az_rad=rx_az_rad, tx_el_rad=tx_el_rad, rx_el_rad=rx_el_rad
         )
 
+    def _sub_link_from_angles(self, ang: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """
+        Generate a sub-link field from pre-built angle tensors (independent phases only).
+        Enables shared cluster geometry across H1 and H2.
+        Returns: (B,N) complex64
+        """
+        B = ang["tx_az_rad"].shape[0]
+        sv_tx = self.steering_vector(ang["tx_az_rad"].reshape(-1, 1), ang["tx_el_rad"].reshape(-1, 1)) \
+            .reshape(B, self.C, self.cfg.n_rays, self.N)
+        sv_rx = self.steering_vector(ang["rx_az_rad"].reshape(-1, 1), ang["rx_el_rad"].reshape(-1, 1)) \
+            .reshape(B, self.C, self.cfg.n_rays, self.N)
+
+        phi = torch.rand(B, self.C, self.cfg.n_rays, 1, device=self.device) * 2 * np.pi
+        ray_phase = torch.exp(1j * phi)
+
+        h_rays = self.ray_amp * ray_phase * sv_tx * torch.conj(sv_rx)
+        h_link = h_rays.sum(dim=2).sum(dim=1)
+
+        p = (h_link.abs() ** 2).mean(dim=1, keepdim=True)
+        h_link = h_link / torch.sqrt(p + self.cfg.eps_norm)
+        return h_link.to(torch.complex64)
+
     def _sub_link_field(self, B: int, is_link1: bool) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """
         Generate one sub-link field over RIS elements: (B,N)
@@ -212,12 +235,25 @@ class CDL38901RIS:
             s1 = min(s0 + chunk, S)
             B = s1 - s0
 
-            h1, a1 = self._sub_link_field(B, is_link1=True)
-            h2, a2 = self._sub_link_field(B, is_link1=False)
+            if self.cfg.shared_cluster_geometry:
+                # One shared cluster geometry per sample, independent phases per sub-link.
+                # Preserves the physical constraint that BS→RIS and RIS→UE share the
+                # same scattering environment while allowing independent small-scale fading.
+                # Note: _build_angles() returns identical results for is_link1=True/False
+                # (both branches assign the same cluster tables), so passing True here is correct.
+                ang_shared = self._build_angles(B, is_link1=True)
+                h1 = self._sub_link_from_angles(ang_shared)
+                h2 = self._sub_link_from_angles(ang_shared)
+                # a1/a2 intentionally share the same reference; the debug loop only reads
+                # tensor values and does not modify them in-place.
+                a1 = ang_shared
+                a2 = ang_shared
+            else:
+                h1, a1 = self._sub_link_field(B, is_link1=True)
+                h2, a2 = self._sub_link_field(B, is_link1=False)
 
-            # Geometric cascade with controlled mixing:
-            # product term preserves two-hop coupling, sum term preserves coherent structure.
-            h_c = 0.7 * (h1 * h2) + 0.3 * (h1 + h2) / np.sqrt(2.0)
+            # Pure cascade (no heuristic mixing)
+            h_c = h1 * h2
 
             # Re-normalize cascade to unit-order
             p_c = (h_c.abs() ** 2).mean(dim=1, keepdim=True)
