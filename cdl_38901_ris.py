@@ -73,7 +73,7 @@ class CDLConfig:
     n_rays: int = 20
     chunk_size: int = 256
     random_global_rotation: bool = False
-    shared_cluster_geometry: bool = True
+    shared_cluster_geometry: bool = False
     eps_norm: float = 1e-12
 
 
@@ -236,11 +236,8 @@ class CDL38901RIS:
             B = s1 - s0
 
             if self.cfg.shared_cluster_geometry:
-                # One shared cluster geometry per sample, independent phases per sub-link.
-                # Preserves the physical constraint that BS→RIS and RIS→UE share the
-                # same scattering environment while allowing independent small-scale fading.
-                # Note: _build_angles() returns identical results for is_link1=True/False
-                # (both branches assign the same cluster tables), so passing True here is correct.
+                # Opt-in: shared cluster geometry with independent phases per sub-link.
+                # Pure product cascade used when geometry is shared.
                 ang_shared = self._build_angles(B, is_link1=True)
                 h1 = self._sub_link_from_angles(ang_shared)
                 h2 = self._sub_link_from_angles(ang_shared)
@@ -248,12 +245,14 @@ class CDL38901RIS:
                 # tensor values and does not modify them in-place.
                 a1 = ang_shared
                 a2 = ang_shared
+                # Pure cascade (appropriate for shared-geometry path)
+                h_c = h1 * h2
             else:
                 h1, a1 = self._sub_link_field(B, is_link1=True)
                 h2, a2 = self._sub_link_field(B, is_link1=False)
-
-            # Pure cascade (no heuristic mixing)
-            h_c = h1 * h2
+                # Geometric cascade with controlled mixing:
+                # product term preserves two-hop coupling, sum term preserves coherent structure.
+                h_c = 0.7 * (h1 * h2) + 0.3 * (h1 + h2) / np.sqrt(2.0)
 
             # Re-normalize cascade to unit-order
             p_c = (h_c.abs() ** 2).mean(dim=1, keepdim=True)
