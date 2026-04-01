@@ -1,1 +1,5 @@
 __pycache__/
+*.png
+*.pth
+experiment_report.txt
+output_*/
